@@ -1,0 +1,139 @@
+---
+title: "Class 7 - interaction exercises"
+author: "Rebecca Foss"
+date: "4/2/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+pacman::p_load(tidyverse, brms, rethinking)
+
+```
+
+# Easy
+7E1. For each of the causal relationships below, name a hypothetical third variable that would lead to an interaction effect.
+(1) Bread dough rises because of yeast.
+Temperature 
+(2) Education leads to higher income.
+Job, gender, race
+(3) Gasoline makes a car go.
+Number of cylinders, slope of the road
+
+
+7E2. Which of the following explanations invokes an interaction?
+(1) Caramelizing onions requires cooking over low heat and making sure the onions do not
+dry out.
+Up for interpretation 
+
+(2) A car will go faster when it has more cylinders or when it has a better fuel injector.
+Has to interact. Speed of car is dependant on number of cylinders and fuel injector
+
+(3) Most people acquire their political beliefs from their parents, unless they get them instead
+from their friends.
+No interaction
+
+(4) Intelligent animal species tend to be either highly social or have manipulative appendages
+(hands, tentacles, etc.).
+No interaction
+
+7E3. For each of the explanations in 7E2, write a linear model that expresses the stated relationship.
+```{r}
+CaramelizedOnions ~ 
+```
+
+# Medium.
+7M1. Recall the tulips example from the chapter. Suppose another set of treatments adjusted the
+temperature in the greenhouse over two levels: cold and hot. The data in the chapter were collected
+at the cold temperature. You find none of the plants grown under the hot temperature developed
+any blooms at all, regardless of the water and shade levels. Can you explain this result in terms of
+interactions between water, shade, and temperature?
+```{r}
+
+```
+
+7M2. Can you invent a regression equation that would make the bloom size zero, whenever the
+temperature is hot?
+```{r}
+
+```
+
+7M3. In parts of North America, ravens depend upon wolves for their food. This is because ravens
+are carnivorous but cannot usually kill or open carcasses of prey. Wolves however can and do kill
+and tear open animals, and they tolerate ravens co-feeding at their kills. This species relationship
+is generally described as a “species interaction.” Can you invent a hypothetical set of data on raven
+population size in which this relationship would manifest as a statistical interaction? Do you think
+the biological interaction could be linear? Why or why not?
+```{r}
+
+```
+
+# Hard.
+7H1. Return to the data(tulips) example in the chapter. Now include the bed variable as a predictor
+in the interaction model. Don’t interact bed with the other predictors; just include it as a main
+effect. Note that bed is categorical. So to use it properly, you will need to either construct dummy
+variables or rather an index variable, as explained in Chapter 6.
+```{r}
+
+```
+
+7H2. Use WAIC to compare the model from 7H1 to a model that omits bed. What do you infer
+from this comparison? Can you reconcile the WAIC results with the posterior distribution of the bed
+coefficients?
+```{r}
+
+```
+
+7H3. Consider again the data(rugged) data on economic development and terrain ruggedness,
+examined in this chapter. One of the African countries in that example, Seychelles, is far outside
+the cloud of other nations, being a rare country with both relatively high GDP and high ruggedness.
+Seychelles is also unusual, in that it is a group of islands far from the coast of mainland Africa, and
+its main economic activity is tourism.
+One might suspect that this one nation is exerting a strong influence on the conclusions. In
+this problem, I want you to drop Seychelles from the data and re-evaluate the hypothesis that the
+relationship of African economies with ruggedness is different from that on other continents.
+
+(a) Begin by using map to fit just the interaction model:
+$$y_i ~ Normal(\mu_i, \sigma)$$
+$$\mu_i = \alpha + \beta A_i + \beta_R R_i + \beta_AR  A_i R_i$$
+where y is log GDP per capita in the year 2000 (log of rgdppc_2000); A is cont_africa, the dummy
+variable for being an African nation; and R is the variable rugged. Choose your own priors. Compare 
+the inference from this model fit to the data without Seychelles to the same model fit to the full data.
+Does it still seem like the effect of ruggedness depends upon continent? How much has the expected
+relationship changed?
+
+```{r}
+
+```
+
+(b) Now plot the predictions of the interaction model, with and without Seychelles. Does it still
+seem like the effect of ruggedness depends upon continent? How much has the expected relationship
+changed?
+
+```{r}
+
+```
+
+(c) Finally, conduct a model comparison analysis, using WAIC. Fit three models to the data without
+Seychelles:
+
+$$Model 1 : y_i ~ Normal(\mu_i, \sigma) 
+\mu_i = \alpha + \beta_RR_i $$
+
+$$Model 2 : y_i ~ Normal(\mu_i, \sigma)      
+
+\mu_i = \beta_A A_i + \beta_R R_i$$
+
+$$Model 3 : y_i ~ Normal(\mu_i, \sigma)
+\mu_i = \beta_A A_i + \beta_R R_i + \beta_AR  A_i R_i$$
+
+
+```{r}
+
+```
+
+
+

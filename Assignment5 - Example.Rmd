@@ -1,0 +1,521 @@
+---
+title: "Assignment 5 - Example"
+author: "RF"
+date: "4/26/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r Simulating data}
+pacman::p_load(tidyverse, brms)
+
+
+
+set.seed <- 1981 # Defining a seed so the results are always the same
+samplesize <- 300 # Defining the amount of datapoints
+n <- 1000 # Defining number of simulations
+MaxScore <- 8 # Defining max rating
+MinScore <- 1 # Defining min rating
+
+## Regression to the mean?
+
+d <- read_csv("~/Dropbox (Personal)/My courses/2020 - SocialCultural/PracticalExercises/SocialConformityData_CogSci18.csv") %>%
+  mutate(
+    Feedback = ifelse(OtherRating==0, NA, Feedback)
+  )
+
+m <- lmer(SecondRating ~ 1 + FirstRating + (1  | ID), 
+          subset(d, is.na(Feedback)), REML=F)
+summary(m)
+
+ggplot(subset(d, is.na(Feedback)), aes(FirstRating,SecondRating)) + 
+  geom_point() +
+  geom_smooth(method=lm)
+
+Regression2Mean <- 0.7 # 1st to 2nd 0.668444
+## Defining the correlation coefficients
+Conformity <- 0.5 # Defining the true correlation of feedback and change
+
+SimulateData <- function(samplesize,
+                         Regression2Mean,
+                         Conformity,
+                         MinScore = 1,
+                         MaxScore = 8){
+  
+  FirstRating <- round(runif(samplesize, MinScore, MaxScore), 0)
+  Feedback <- round(runif(samplesize, -3, 3), 0)
+  SecondRating <- round(Regression2Mean * FirstRating + Conformity * Feedback, 0)
+  SecondRating <- ifelse(SecondRating > MaxScore, MaxScore,ifelse(SecondRating < MinScore, MinScore, SecondRating))
+  Change <- SecondRating - FirstRating
+    
+  d1 <- data.frame(FirstRating, Feedback, SecondRating, Change) %>% 
+    subset(FirstRating + Feedback < MaxScore & FirstRating + Feedback > MinScore) %>%
+    mutate(
+      FirstRatingC <- FirstRating - 4.5,
+      SecondRatingC <- SecondRating - 4.5,
+    )
+  return(d1)
+}
+
+CalculateCorrelation <- function(simulations = n, 
+                                 samplesize,
+                                 Regression2Mean,
+                                 Conformity, 
+                                 MinScore = 1, 
+                                 MaxScore = 8){
+  for (i in c(1:n)){
+    
+    d <- SimulateData(samplesize, Regression2Mean, Conformity, MinScore, MaxScore)
+    
+    if (i == 1) {
+      RegressionEstimate <- cor(d$FirstRating, d$SecondRating)
+      ConformityEstimate <- cor(d$Feedback, d$Change)
+    } else {
+      RegressionEstimate <- c(RegressionEstimate, cor(d$FirstRating, d$SecondRating))
+      ConformityEstimate <- c(ConformityEstimate, cor(d$Feedback, d$Change))
+    }
+  }
+  Estimates <- data.frame(
+    ConformityEstimate = ifelse(is.na(ConformityEstimate),0,ConformityEstimate), 
+    RegressionEstimate = RegressionEstimate, 
+    RegressionTrue = Regression2Mean,
+    ConformityTrue = Conformity
+  )
+  return(Estimates)
+}
+
+
+
+ConformityEstimateR1C0 <- CalculateCorrelation(n, 
+                                               samplesize, 
+                                               Regression2Mean = 1,
+                                               Conformity = 0)
+ConformityEstimateR1C1 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 1,
+                                              Conformity = 0.1)
+ConformityEstimateR1C2 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 1,
+                                              Conformity = 0.2)
+ConformityEstimateR1C3 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 1,
+                                              Conformity = 0.3)
+ConformityEstimateR1C4 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 1,
+                                              Conformity = 0.4)
+ConformityEstimateR1C5 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 1,
+                                              Conformity = 0.5)
+
+ConformityEstimateR8C0 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.8,
+                                              Conformity = 0)
+ConformityEstimateR8C1 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.8,
+                                              Conformity = 0.1)
+ConformityEstimateR8C2 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.8,
+                                              Conformity = 0.2)
+ConformityEstimateR8C3 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.8,
+                                              Conformity = 0.3)
+ConformityEstimateR8C4 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.8,
+                                              Conformity = 0.4)
+ConformityEstimateR8C5 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.8,
+                                              Conformity = 0.5)
+
+ConformityEstimateR6C0 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.6,
+                                              Conformity = 0)
+ConformityEstimateR6C1 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.6,
+                                              Conformity = 0.1)
+ConformityEstimateR6C2 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.6,
+                                              Conformity = 0.2)
+ConformityEstimateR6C3 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.6,
+                                              Conformity = 0.3)
+ConformityEstimateR6C4 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.6,
+                                              Conformity = 0.4)
+ConformityEstimateR6C5 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.6,
+                                              Conformity = 0.5)
+
+
+
+ConformityEstimate <- rbind(ConformityEstimateR1C0,
+                            ConformityEstimateR1C1,
+                            ConformityEstimateR1C2,
+                            ConformityEstimateR1C3,
+                            ConformityEstimateR1C4,
+                            ConformityEstimateR1C5,
+                            ConformityEstimateR8C0,
+                            ConformityEstimateR8C1,
+                            ConformityEstimateR8C2,
+                            ConformityEstimateR8C3,
+                            ConformityEstimateR8C4,
+                            ConformityEstimateR8C5,
+                            ConformityEstimateR6C0,
+                            ConformityEstimateR6C1,
+                            ConformityEstimateR6C2,
+                            ConformityEstimateR6C3,
+                            ConformityEstimateR6C4,
+                            ConformityEstimateR6C5)
+
+
+Reference <- ConformityEstimate %>%
+  group_by(RegressionTrue, ConformityTrue) %>%
+  summarise(
+    TrueRegression = mean(RegressionTrue),
+    EstimatedRegression = mean(RegressionTrue),
+    TrueConformity = mean(ConformityTrue),
+    EstimatedConformity = mean(ConformityEstimate))
+
+
+ggplot(ConformityEstimate, aes(ConformityEstimate)) +
+  geom_density() +
+  geom_vline(data = Reference, mapping = aes(xintercept = TrueConformity), color="red") +
+  geom_vline(data = Reference, mapping = aes(xintercept = EstimatedConformity), color="green") +
+  facet_grid(RegressionTrue ~ ConformityTrue) +
+  theme_classic()
+
+## Lots of bias. Can we reduce it via appropriate modeling?
+d0 <- SimulateData(samplesize, Regression2Mean = .7, Conformity = 0, MinScore = 1, MaxScore = 8)
+d1 <- SimulateData(samplesize, Regression2Mean = .7, Conformity = .1, MinScore = 1, MaxScore = 8)
+d2 <- SimulateData(samplesize, Regression2Mean = .7, Conformity = .2, MinScore = 1, MaxScore = 8)
+d3 <- SimulateData(samplesize, Regression2Mean = .7, Conformity = .3, MinScore = 1, MaxScore = 8)
+d4 <- SimulateData(samplesize, Regression2Mean = .7, Conformity = .4, MinScore = 1, MaxScore = 8)
+d5 <- SimulateData(samplesize, Regression2Mean = .7, Conformity = .5, MinScore = 1, MaxScore = 8)
+
+Conformity_f1 <- bf(Change ~ 1 + Feedback)
+
+Conformity_f2 <- bf(Change ~ 1 + Feedback + FirstRating)
+
+Conformity_f3 <- bf(Feedback ~ 1 + FirstRating) + 
+                 bf(Change ~ 1 + Feedback + FirstRating) + set_rescor(F)
+
+get_prior(Conformity_f3,d,family=gaussian())
+
+prior <- c(
+  prior(normal(0,1), class = Intercept),
+  prior(normal(0,1), class = b),
+  prior(normal(0,1), class = sigma)
+)
+
+Conformity_m1_prior <- brm(
+  Conformity_f1,
+  d1,
+  family=gaussian(),
+  prior=prior,
+  sample_prior="only",
+  cores=1,
+  chains=2,
+  control = list(
+    adapt_delta=0.99,
+    max_treedepth = 20
+  )
+)
+
+pp_check(Conformity_m1_prior, nsamples=100)
+
+Conformity_m1_0 <- brm(
+  Conformity_f1,
+  d0,
+  family=gaussian(),
+  prior=prior,
+  sample_prior=T,
+  cores=1,
+  chains=2,
+  control = list(
+    adapt_delta=0.99,
+    max_treedepth = 20
+  )
+)
+
+Conformity_m1_1 <- update(Conformity_m1_0, newdata = d1)
+Conformity_m1_2 <- update(Conformity_m1_0, newdata = d2)
+Conformity_m1_3 <- update(Conformity_m1_0, newdata = d3)
+Conformity_m1_4 <- update(Conformity_m1_0, newdata = d4)
+Conformity_m1_5 <- update(Conformity_m1_0, newdata = d5)
+
+Conformity_m2_0 <- update(Conformity_m1_0, formula = Conformity_f2, newdata = d0)
+Conformity_m2_1 <- update(Conformity_m2_0, newdata = d1)
+Conformity_m2_2 <- update(Conformity_m2_0, newdata = d2)
+Conformity_m2_3 <- update(Conformity_m2_0, newdata = d3)
+Conformity_m2_4 <- update(Conformity_m2_0, newdata = d4)
+Conformity_m2_5 <- update(Conformity_m2_0, newdata = d5)
+
+prior_SEM <- c(
+  prior(normal(0,1), class = Intercept, resp = Change),
+  prior(normal(0,1), class = Intercept, resp = Feedback),
+  prior(normal(0,1), class = b, resp = Change),
+  prior(normal(0,1), class = b, resp = Feedback),
+  prior(normal(0,1), class = sigma, resp = Change),
+  prior(normal(0,1), class = sigma, resp = Feedback)
+)
+
+Conformity_m3_0 <- brm(
+  Conformity_f3,
+  d0,
+  family=gaussian(),
+  prior=prior_SEM,
+  sample_prior=T,
+  cores=1,
+  chains=2,
+  control = list(
+    adapt_delta=0.99,
+    max_treedepth = 20
+  )
+)
+
+Conformity_m3_1 <- update(Conformity_m3_0, newdata = d1)
+Conformity_m3_2 <- update(Conformity_m3_0, newdata = d2)
+Conformity_m3_3 <- update(Conformity_m3_0, newdata = d3)
+Conformity_m3_4 <- update(Conformity_m3_0, newdata = d4)
+Conformity_m3_5 <- update(Conformity_m3_0, newdata = d5)
+
+
+
+hypothesis(Conformity_m1_0,"Feedback > 0")
+hypothesis(Conformity_m1_1,"Feedback > 0")
+hypothesis(Conformity_m1_2,"Feedback > 0")
+hypothesis(Conformity_m1_3,"Feedback > 0")
+hypothesis(Conformity_m1_4,"Feedback > 0")
+hypothesis(Conformity_m1_5,"Feedback > 0")
+
+hypothesis(Conformity_m2_0,"Feedback > 0")
+hypothesis(Conformity_m2_1,"Feedback > 0")
+hypothesis(Conformity_m2_2,"Feedback > 0")
+hypothesis(Conformity_m2_3,"Feedback > 0")
+hypothesis(Conformity_m2_4,"Feedback > 0")
+hypothesis(Conformity_m2_5,"Feedback > 0")
+
+hypothesis(Conformity_m3_0,"Change_Feedback > 0")
+hypothesis(Conformity_m3_1,"Change_Feedback > 0")
+hypothesis(Conformity_m3_2,"Change_Feedback > 0")
+hypothesis(Conformity_m3_3,"Change_Feedback > 0")
+hypothesis(Conformity_m3_4,"Change_Feedback > 0")
+hypothesis(Conformity_m3_5,"Change_Feedback > 0")
+
+Conformity_m1_2 <- add_criterion(Conformity_m1_2, criterion = "loo")
+Conformity_m2_2 <- add_criterion(Conformity_m2_2, criterion = "loo")
+
+loo_compare(Conformity_m1_2,Conformity_m2_2)
+loo_model_weights(Conformity_m1_2,Conformity_m2_2)
+
+```
+
+## Now we are ready to actually analyze the data
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+pacman::p_load(tidyverse, 
+               brms,
+               bayesplot,
+               viridis)
+d <- read_csv("~/Dropbox (Personal)/My courses/2020 - SocialCultural/PracticalExercises/SocialConformityData_CogSci18.csv") %>%
+  mutate(
+    Feedback = ifelse(OtherRating==0,NA,Feedback)
+  ) %>%
+  subset(!is.na(Feedback))
+```
+
+## Template
+
+### Define hypotheses / Describe variables
+
+### Identify your model[s] 
+* likelihood function
+* formula
+* priors
+
+### Assess model quality
+* Predictive prior checks
+* Divergences / Rhat / ESS
+* Prior/Posterior learning (betas and sds)
+* Model comparison
+* Predictive posterior checks
+
+### Report results
+* Model comparison
+* Estimates and hypothesis testing
+* Make sure to deal cautiously with interactions (e.g. plot!)
+* Make sure to let the reader know the effects of the estimates on the outcome scale (if generalized linear model)
+
+
+### Define your hypotheses
+People will conform to peer feedback, that is, they will change according to the feedback.
+
+### Describe variables
+Outcome: 
+- Change (amount of change from the first rating)
+Predictors: 
+- Feedback (difference between first rating and peer feedback)
+- FirstRating (starting point, e.g. if early rating is 8, difficult to go up!)
+- ID: participant ID
+- FaceID: face ID
+
+### Identify your model[s] 
+* likelihood function: Change is numeric and goes from -6 to +6. Roughly gaussian?
+* formula: 
+* priors
+
+```{r}
+
+SocConformity_f1 <- bf(Change ~ 1 + FirstRating + Feedback + 
+                         (1 + FirstRating + Feedback | ID) + 
+                         (1 + FirstRating + Feedback | FaceID))
+
+get_prior(SocConformity_f1, d, family = gaussian)
+
+SocConformity_prior <- c(
+  prior(normal(0, 1), class = Intercept),
+  prior(normal(0, .3), class = b),
+  prior(normal(0, .3), class = sd),
+  prior(lkj(5), class = cor),
+  prior(normal(0,1), class = sigma)
+)
+
+SocConformity_m_prior <- brm(
+  SocConformity_f1,
+  d,
+  family = gaussian,
+  prior = SocConformity_prior,
+  sample_prior = "only",
+  chains = 2,
+  cores = 2,
+  control = list(
+    adapt_delta = 0.99,
+    max_treedepth = 20
+  )
+)
+
+pp_check(SocConformity_m_prior, nsamples=100)
+
+```
+
+## Fit the model and assess model quality
+
+
+```{r}
+SocConformity_m <- brm(
+  SocConformity_f1,
+  d,
+  family = gaussian,
+  prior = SocConformity_prior,
+  sample_prior = T,
+  chains = 2,
+  cores = 2,
+  iter = 4000,
+  control = list(
+    adapt_delta = 0.99,
+    max_treedepth = 20
+  )
+)
+
+summary(SocConformity_m)
+
+pp_check(SocConformity_m, nsamples=100)
+
+
+color_scheme_set("viridis")
+mcmc_trace(SocConformity_m,
+           pars = c("b_Intercept", "b_Feedback", 
+           "sd_FaceID__Intercept", "sd_FaceID__Feedback",
+           "sd_ID__Intercept", "sd_ID__Feedback")) + 
+  theme_classic()
+mcmc_rank_overlay(SocConformity_m,
+                  pars = c("b_Intercept", "b_Feedback", 
+           "sd_FaceID__Intercept", "sd_FaceID__Feedback",
+           "sd_ID__Intercept", "sd_ID__Feedback")) + theme_classic()
+
+# The posteriors have moved or gotten more confident than the priors
+plot(hypothesis(SocConformity_m,"Intercept > 0"))
+plot(hypothesis(SocConformity_m,"Intercept > 0", class="sd", group="FaceID"))
+plot(hypothesis(SocConformity_m,"Intercept > 0", class="sd", group="ID"))
+plot(hypothesis(SocConformity_m,"Feedback > 0"))
+plot(hypothesis(SocConformity_m,"Feedback > 0", class="sd", group="FaceID"))
+plot(hypothesis(SocConformity_m,"Feedback > 0", class="sd", group="ID"))
+plot(conditional_effects(SocConformity_m), points=T, rug=T)[[1]] + theme_classic()
+
+```
+
+## Model comparison
+
+```{r}
+# What would make sense?
+## Model without rating?
+## Model without feedback?
+
+
+SocConformity_f0 <- 
+  bf(Change ~ 1 + FirstRating + 
+       (1 + FirstRating | ID) + 
+       (1 + FirstRating | FaceID))
+
+SocConformity_m0 <- update(SocConformity_m, formula = SocConformity_f0, newdata = d)
+
+SocConformity_m0 <- add_criterion(SocConformity_m0,criterion="loo")
+SocConformity_m <- add_criterion(SocConformity_m,criterion="loo")
+loo_compare(SocConformity_m0,SocConformity_m)
+loo_model_weights(SocConformity_m0,SocConformity_m)
+```
+
+## Results and hyp testing
+```{r}
+summary(SocConformity_m)
+hypothesis(SocConformity_m,"Feedback > 0")
+
+## Visualize 
+conditional_effects(SocConformity_m)
+
+xx <- predict(SocConformity_m, summary=T)
+d <- cbind(d,xx)
+d$ID <- as.factor(d$ID)
+ggplot(d) + 
+  geom_point(aes(Feedback,Change, color = ID, group=ID)) + 
+  geom_smooth(method=lm, se=F, aes(Feedback,Change, color = ID))
+
+X <- hypothesis(SocConformity_m, "Feedback > 0",group = "ID", scope = "coef")
+X$hypothesis %>%
+  left_join(distinct(d, Group = ID)) %>% 
+  mutate(id = factor(Group), Conformity = Estimate) %>%
+  ggplot(aes(Conformity, id)) +
+  geom_errorbarh(aes(xmin = CI.Lower, xmax = CI.Upper)) +
+  geom_point() + theme_classic()
+
+```
+
+### Report
+
+### Methods and Materials
+#### Participants
+
+#### Experimental setup
+In order to investigate whether implicit social conformity can be found beyond regression to the mean, we relied on the XNXN paradigm. DESCRIPTION OF THE PARADIGM.
+
+#### Statistical analysis
+The underlying causal diagram was formalized using Directed Acyclical Graphs in Figure XX. The diagram indicates the necessity to control for BLABLA in order to avoid BLABLA.
+In order to confirm the adequacy of such approach we set up a simulation of the data generating process and compared N statistical models in their ability to infer the true parameters.
+The simulation involved BLABLA
+The results indicated that the model including BLABLA could indeed recover the true parameter with high precision. See plot/table.
+We therefore constructed two models on the actual data from the experiment, in order to assess whether Feedback had an effect on the second rating.
+As outcome we chose Change (between own ratings) modeled relying on a Gaussian likelihood. In the first model we only used First Rating as a predictor, in the second we added Feedback. Both models had a full varying structure of the predictors, varying both by Participant and by Face stimulus.
+As priors we chose blabla and checked with prior predictive checks whether the scale of the expected outcomes was correct (e.g. avoiding impossible change values, such as + 100). See figure S1.
+We tested for model quality in terms of no divergences, Rhat < 1.05, effective samples above 200, posterior predictive checks, visual inspection of the markov chains (raw and ranked) and assessment as to whether the posterior had learned from the data (contrast with prior). Model quality was ensured, details are reported in the appendix.
+We compared the two models using loo based stacking weights model comparison (REF).
+If the model including feedback was reliably better than the model without feedback, we would then more specifically test our hypothesis of implicit conformity relying on evidence ratio, that is, the amount of posterior samples compatible with our hypothesis divided the amount of incompatible posterior samples.
+The modeling was performed relying on R 4.0.0, RStudio blalb, tidyverse, brms, Stan (REFS)
+
+### Results
+
+Model comparison revealed that no model was clearly better than the other, suggesting caution when testing hypotheses on our theoretically motivated model, which includes Feedback.
+As expected we saw a credible positive effect of feedback on the change in rating beyond regression to the mean (B = 0.02, SE= 0.01, 95% CIs blabla, ER = 27.). See figure blabla. 
+The effect was small, but quite consistent across participants, see figure blabla.
+For full details on the model see Table S1.

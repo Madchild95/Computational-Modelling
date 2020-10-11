@@ -1,0 +1,717 @@
+---
+title: "7 - intercations"
+author: "Aske Qvist"
+date: "26 March 2020"
+output: md_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Chapter 7 - interactions
+
+Loading data
+```{r}
+# Packages
+library(pacman)
+p_load(rethinking, brms, tidyverse, patchwork)
+
+# Data
+data(rugged)
+d <- rugged
+
+detach(package:rethinking, unload = T)
+
+```
+
+Make data subsets
+```{r}
+
+# make log version of outcome
+d <- d %>% mutate(
+  log_gdp = log(rgdppc_2000)
+)
+
+# extract countries with GDP data
+dd <- d %>% filter(complete.cases(rgdppc_2000))
+
+# split countries into Africa and not-Africa
+d.A1 <- dd %>% filter(cont_africa == 1) # Afrika
+d.A0 <- dd %>% filter(cont_africa == 0) # not Afrika
+
+```
+
+Fit models to the two data subsets
+```{r}
+
+b7.1 <-
+  brm(data = d.A1, family = gaussian, # Afrikan data
+      log_gdp ~ 1 + rugged,
+      prior = c(prior(normal(8, 100), class = Intercept),
+                prior(normal(0, 1), class = b),
+                prior(uniform(0, 10), class = sigma)),
+      iter = 2000, warmup = 1000, chains = 4, cores = 4,
+      seed = 7)
+
+b7.2 <-
+  update(b7.1, # Not Afrikan data
+         newdata = d.A0)
+
+```
+
+Plot posterior predictions
+```{r}
+africa <- d.A1 %>%
+  ggplot(aes(x = rugged, y = log_gdp)) +
+  stat_smooth(method = "lm", fullrange = T, size = 1/2,
+              color = "firebrick4", fill = "firebrick", alpha = 1/5) +
+  geom_point(size = 1.5, color = "firebrick4", alpha = 1/2) +
+  scale_x_continuous("Rugged", limits = c(0, 55)) +
+  coord_cartesian(xlim = 0:7, ylim = 6:10) +
+  ylab("Log of GDP") +
+  theme_bw() + ggtitle("Africa") 
+  
+not_africa <- d.A0 %>%
+  ggplot(aes(x = rugged, y = log_gdp)) +
+  stat_smooth(method = "lm", fullrange = T, size = 1/2,
+              color = "firebrick4", fill = "firebrick", alpha = 1/5) +
+  geom_point(size = 1.5, color = "firebrick4", alpha = 1/2) +
+  scale_x_continuous("Rugged", limits = c(0, 55)) +
+  coord_cartesian(xlim = 0:7, ylim = 6:10) +
+  ylab("Log of GDP") +
+  theme_bw() + ggtitle("Not Africa")
+  
+
+not_africa + africa
+# slope is positive within africa but negative outside africa
+
+
+```
+
+It is better if we keep the data in the same data set. Multilevel models borrow data from the different categories in order to improve estimates in all categories - and many other reasons. But even if we added the dummy variable cont_africa, this will not solve the problem - as a normal linear regression does not account for different slopes for the categories of the dummy.
+
+## Comapre the models with/without the dummy cont_africa as predictor ( but no interaction effect)
+```{r}
+# Start with the model I made before (without the dummy cont_africa) - just with all the data
+b7.3 <-
+  update(b7.1, newdata = dd) # all data
+
+# Now the same but added is the dummy as a predictor (in the formula)
+b7.4 <-
+  update(b7.3,
+         newdata = dd,
+         formula = log_gdp ~ 1 + rugged + cont_africa) 
+
+# compute information criteria for both
+b7.3 <- add_criterion(b7.3, c("loo", "waic"))
+b7.4 <- add_criterion(b7.4, c("loo", "waic"))
+
+
+# compare IC
+loo_compare(b7.3, b7.4,
+            criterion = "waic")
+
+loo_compare(b7.3, b7.4,
+            criterion = "loo")
+# loo and waic agree - the model with
+# the dummy fits teh data way better
+
+
+# compute weight
+model_weights(b7.3, b7.4,
+              weights = "waic") %>% 
+  round(digits = 3)
+# The model with the dummy 
+# has all the weight :)
+
+
+```
+
+
+## adding a linear interaction
+We want the realtionship between Y (GDP) and R (rugged) to vary as a function of A (dummy varible)
+
+(the model comparisons do not work) add_criterion() and model_weigths() when using brms.
+```{r}
+
+# Define new model with interaction effect 
+b7.5 <-
+  update(b7.4,
+         newdata = dd,
+         formula = log_gdp ~ 1 + rugged*cont_africa) # syntax as lmer()
+
+b7.5b <-
+  update(b7.4,
+         newdata = dd,
+         formula = log_gdp ~ 1 + rugged + cont_africa + rugged:cont_africa) 
+
+# add IC 
+b7.5 <- add_criterion(b7.5,c("loo","waic"))
+
+# compare all 3 models
+l <- loo_compare(b7.3, b7.4, b7.5, criterion = "waic")
+
+print(l, simplify = F)
+
+# weight
+model_weights(b7.3, b7.4, b7.5,
+              weights = "loo") %>% 
+  round(digits = 3)
+
+b7.5$loo # This is not working!
+
+
+
+```
+
+
+## Interpreting interaction effect 
+and compare and plot slopes for the dummy
+```{r}
+## Parameter estimates 
+posterior_summary(b7.5)
+posterior_summary(b7.4)
+# Does not calculate the gamma (the slope conditioned on cont_africa). Therefore, we have to do it manually
+
+# within Africa
+fixef(b7.5)[2, 1] + fixef(b7.5)[4, 1] * 1
+# outside Africa
+fixef(b7.5)[2, 1] + fixef(b7.5)[4, 1] * 0
+
+#But those are only map values, from a sample of the posterior distribution we can get uncertainties around those MAP's
+post <- posterior_samples(b7.5) 
+
+post %>%
+  transmute(gamma_Africa    = b_rugged + `b_rugged:cont_africa`, # based on computing gamma when A == 1
+            gamma_notAfrica = b_rugged) %>% # based on computing gamma when A == 0 (and the interaction effect disappears)
+  gather(key, value) %>%
+  group_by(key) %>%
+  summarise(mean = mean(value))
+
+
+# plot the distributions (of uncertainty around the MAP values - the slopes for the dummy)
+p_load(ggthemes)
+
+post %>%
+  transmute(gamma_Africa    = b_rugged + `b_rugged:cont_africa`,
+            gamma_notAfrica = b_rugged) %>%
+  gather(key, value) %>%
+  
+  ggplot(aes(x = value, group = key, color = key, fill = key)) +
+  geom_density(alpha = 1/4) +
+  scale_colour_pander() +
+  scale_fill_pander() +
+  scale_x_continuous(expression(gamma), expand = c(0, 0)) +
+  scale_y_continuous(NULL, breaks = NULL) +
+  ggtitle("Terraine Ruggedness slopes",
+          subtitle = "Blue = African nations, Green = others") +
+  theme_pander() + 
+  theme(text = element_text(family = "Times"),
+        legend.position = "none")
+# nations outside Africa has a positive relationship between GDP and rugged, with a distribution of uncertainty around
+
+#what’s the probability (according to this model and these data) that
+#the slope within Africa is less than the slope outside of Africa?
+
+post %>%
+  mutate(gamma_Africa    = b_rugged + `b_rugged:cont_africa`,
+         gamma_notAfrica = b_rugged) %>% 
+  mutate(diff            = gamma_Africa - gamma_notAfrica) %>% 
+  # what proportion of the differences (for each sample of the posterior) is below 0?
+  summarise(Proportion_of_the_difference_below_0 = sum(diff < 0) / length(diff))
+
+```
+
+
+
+## CONTINUOUS INTERACTIONS
+
+load data
+```{r}
+# The data
+library(rethinking)
+data(tulips)
+d <- tulips
+head(d)
+
+# done in online version
+detach(package:rethinking, unload = T)
+library(brms)
+rm(tulips)
+
+```
+
+## making models with interaction to compare
+
+Making 2 models - one where the parameters interact and one without interaction
+```{r}
+# Without
+b7.6 <-
+  brm(data = d, family = gaussian,
+      blooms ~ 1 + water + shade,
+      prior = c(prior(normal(0, 100), class = Intercept),
+                prior(normal(0, 100), class = b),
+                prior(uniform(0, 100), class = sigma)),
+      iter = 2000, warmup = 1000, cores = 4, chains = 4,
+      seed = 7)
+
+# yieled divergent transitions --> update with better prior and 'control' element (whatever that means)
+
+b7.6 <-
+  update(b7.6,
+         prior = c(prior(normal(0, 100), class = Intercept),
+                   prior(normal(0, 100), class = b),
+                   prior(cauchy(0, 10), class = sigma)),
+         control = list(adapt_delta = 0.9), # apparently good to add.
+         seed = 7)
+
+posterior_summary(b7.6) %>% round(digits = 2)
+
+
+# with interaction effect
+b7.7 <- 
+  update(b7.6, 
+         formula = blooms ~ 1 + water + shade + water:shade)
+
+posterior_summary(b7.6) %>% round(digits = 2)
+posterior_summary(b7.7) %>% round(digits = 2)
+
+
+# model comparison with WAIC
+b7.6 <- add_criterion(b7.6, "waic")
+b7.7 <- add_criterion(b7.7, "waic")
+
+w <- loo_compare(b7.6, b7.7, criterion = "waic")
+
+print(w, simplify = F)
+
+# cbind() trick to convert from elpd metric to more traditional WAIC metric
+cbind(waic_diff = w[, 1] * -2,
+      se        = w[, 2] *  2)
+
+# and weight 
+model_weights(b7.6, b7.7, weights = "waic") # almost all weight goes to interaction model.
+
+```
+
+I do it after mean centering
+```{r}
+# mean center to two new columns
+# it is better to meancenter beacuse then the intercept will be the empirical mean - and the search when compiling the model will work better(i think)
+d <- d %>% mutate(
+  water_c = water - mean(water),
+  shade_c = shade - mean(shade)
+)
+
+# compile new model without interaction
+b7.8 <-
+  brm(data = d, family = gaussian,
+      blooms ~ 1 + water_c + shade_c,
+      prior = c(prior(normal(130, 100), class = Intercept),# updating prior for intercept (after summary, I know the mean
+                prior(normal(0, 100), class = b),          # of outcome varible is around 130)
+                prior(cauchy(0, 10), class = sigma)),
+      iter = 2000, warmup = 1000, chains = 4, cores = 4,
+      control = list(adapt_delta = 0.9),
+      seed = 7)
+
+# with interaction
+b7.9 <- 
+  update(b7.8, 
+         formula = blooms ~ 1 + water_c + shade_c + water_c:shade_c)
+
+
+# Results
+posterior_summary(b7.8) %>% round(digits = 2)
+posterior_summary(b7.9) %>% round(digits = 2)
+# because we have mean centered the predictor variables,
+# the intercept becomes the grand mean of the outcome
+
+
+
+# Model comparison 
+b7.8 <- add_criterion(b7.8, "waic")
+b7.9 <- add_criterion(b7.9, "waic")
+
+h <- loo_compare(b7.8, b7.9, criterion = "waic")
+
+print(h, simplify = F)
+
+# cbind() trick to convert from elpd metric to more traditional WAIC metric
+cbind(waic_diff = w[, 1] * -2,
+      se        = w[, 2] *  2)
+
+# and weight 
+model_weights(b7.8, b7.9, weights = "waic") # most weight ascribed to b7.9
+
+
+# comparative summary of the 2 models
+tibble(model  = str_c("b7.", 8:9)) %>% 
+  mutate(fit  = purrr::map(model, get)) %>% 
+  mutate(tidy = purrr::map(fit, broom::tidy)) %>% 
+  unnest(tidy) %>% 
+  filter(term != "lp__") %>% 
+  select(term, estimate, model) %>% 
+  spread(key = model, value = estimate) %>% 
+  mutate_if(is.double, round, digits = 2)
+
+
+```
+
+Plot implied predictions - TRIPTYCH (good way to plot interactions)
+```{r}
+# three plot made to be viewed together
+
+
+# loop over values of water_c and plot predicitons
+shade_seq <- -1:1
+
+for(w in -1:1) {
+  # define the subset of the original data
+  dt <- d[d$water_c == w, ]
+  # defining our new data
+  nd <- tibble(water_c = w, shade_c = shade_seq)
+  # use our sampling skills, like before
+  f <- 
+    fitted(b7.9, newdata = nd) %>%
+    as_tibble() %>%
+    bind_cols(nd)
+  
+  # specify our custom plot
+  fig <- 
+    ggplot() +
+    geom_smooth(data = f,
+                aes(x = shade_c, y = Estimate, ymin = Q2.5, ymax = Q97.5),
+                stat = "identity", 
+                fill = "#CC79A7", color = "#CC79A7", alpha = 1/5, size = 1/2) +
+    geom_point(data = dt, 
+               aes(x = shade_c, y = blooms),
+               shape = 1, color = "#CC79A7") +
+    coord_cartesian(xlim = range(d$shade_c), 
+                    ylim = range(d$blooms)) +
+    scale_x_continuous("Shade (centered)", breaks = c(-1, 0, 1)) +
+    labs("Blooms", 
+         title = paste("Water (centered) =", w)) +
+    theme_pander() + 
+    theme(text = element_text(family = "Times"))
+
+  # save to plotting
+  if (w == -1){
+    fig_1 <- fig
+  } else if (w == 0){
+    fig_2 <- fig
+  } else {
+    fig_3 <- fig
+  }
+
+}
+
+# Using patchwork to plot them next to eachother
+fig_1 + fig_2 + fig_3
+
+```
+
+
+
+
+
+
+
+
+# Exercises for chapter 7
+
+
+## Easy
+
+### 7E1. For each of the causal relationships below, name a hypothetical third variable that would lead to an interaction effect.
+
+(1) Bread dough rises because of yeast.
+- the continues variable of temperature interacting with the amount of yeast
+
+(2) Education leads to higher income.
+- Gender, colour etc.
+
+(3) Gasoline makes a car go.
+- number of cylinders
+
+### 7E2. Which of the following explanations invokes an interaction?
+
+(1) Caramelizing onions requires cooking over low heat and making sure the onions do not
+dry out.
+- Unclear 
+
+(2) A car will go faster when it has more cylinders or when it has a better fuel injector.
+- Interaction
+
+(3) Most people acquire their political beliefs from their parents, unless they get them instead
+from their friends.
+- No interaction
+
+
+(4) Intelligent animal species tend to be either highly social or have manipulative appendages
+(hands, tentacles, etc.).
+- No interaction
+
+### 7E3. For each of the explanations in 7E2, write a linear model that expresses the stated relationship.
+```{r}
+onion ~ 1 + heat * awareness
+onion ~ heat + dryness
+
+speed ~ 0 + num_cylinders:fuel_injector + num_cylinders + fuel_injector
+# Same as: 
+speed ~ 1 + num_cylinders * fuel_injector
+
+pol_belief ~ parents + friends
+
+intelligenec ~ social + mani_appendage
+
+
+```
+
+## Medium.
+7M1. Recall the tulips example from the chapter. Suppose another set of treatments adjusted the
+temperature in the greenhouse over two levels: cold and hot. The data in the chapter were collected
+at the cold temperature. You find none of the plants grown under the hot temperature developed
+any blooms at all, regardless of the water and shade levels. Can you explain this result in terms of
+interactions between water, shade, and temperature?
+```{r}
+BloomSize ~ (Water * Shade) * Temperature
+
+```
+
+7M2. Can you invent a regression equation that would make the bloom size zero, whenever the
+temperature is hot?
+
+Temperature is a binary variable, where 0 is hot and 1 is colder.
+
+$$
+BloomSize \sim  (a + bW*water.c + bS*shade.c + bWS*water.c*shade.c)*Temp
+\\
+or
+\\
+BloomSize = (a + bW*water.c + bS*shade.c + bWS*water.c*shade.c)*Temp + \epsilon
+$$
+
+7M3. In parts of North America, ravens depend upon wolves for their food. This is because ravens
+are carnivorous but cannot usually kill or open carcasses of prey. Wolves however can and do kill
+and tear open animals, and they tolerate ravens co-feeding at their kills. This species relationship
+is generally described as a "species interaction". 
+
+a)
+Can you invent a hypothetical set of data on raven
+population size in which this relationship would manifest as a statistical interaction? 
+```{r}
+pacman::p_load(tidyverse, patchwork, lme4)
+
+food <- c(rep(1,5),rep(2,5),rep(3,5))
+wolves <- c(12,13,11,10,9,24,22,25,27,16,27,29,30,28,30)
+ravens <- c(0,1,0,2,3,5,6,7,4,5,25,27,31,30,29)
+
+d <- as.data.frame(cbind(food,wolves,ravens))
+
+food1 <- ggplot(data = d[d$food == 1,], aes(x = wolves, y = ravens)) + geom_smooth(method = 'lm') + geom_point() + labs(title = 'Food low')
+food2 <- ggplot(data = d[d$food == 2,], aes(x = wolves, y = ravens)) + geom_smooth(method = 'lm') + geom_point() + labs(title = 'Food relatively medium')
+food3 <- ggplot(data = d[d$food == 3,], aes(x = wolves, y = ravens)) + geom_smooth(method = 'lm') + geom_point() + labs(title = 'Food high')
+
+food1 + food2 + food3
+
+RavenPopuSize ~ PreyPopulationWolvesPopulation
+
+raven ~ normal(mu,sigma)
+mu ~ food:wolves + wolves + food
+
+summary(lm(ravens ~ wolves * food), data = d)
+summary(lm(ravens ~ 0 + wolves * as.factor(food)), data = d)
+
+
+```
+b)
+Do you think the biological interaction could be linear? Why or why not?
+
+```{r}
+# It might be.
+# But it might also be the case that if the ratio between Prey and Wolves increase, the increase of the interaction effect on Ravens increase. 
+
+# I.e. That the more prey there is per wolf, the less of the meat they eat from the prey -> thus leaving more prey for the ravens (leading the population of ravens to increase).
+
+
+```
+
+
+## Hard.
+7H1. Return to the data(tulips) example in the chapter. Now include the bed variable as a predictor
+in the interaction model. Don't interact bed with the other predictors; just include it as a main
+effect. Note that bed is categorical. So to use it properly, you will need to either construct dummy
+variables or rather an index variable, as explained in Chapter 6.
+```{r}
+
+# The data
+library(pacman)
+p_load(brms,tidyverse)
+library(rethinking)
+data(tulips)
+d <- tulips
+head(d)
+
+# done in online version
+detach(package:rethinking, unload = T)
+
+# construct dummy variable
+d$bed <- as.factor(d$bed)
+
+
+
+# mean centering
+d <- d %>% mutate(
+  water_c = water - mean(water),
+  shade_c = shade - mean(shade)
+)
+
+
+# without interaction with bed
+#formula
+f_7h1 <- bf(blooms ~ 1 + water_c * shade_c + bed)
+
+#getting prior
+get_prior(f_7h1, data=d, family=gaussian)
+
+#defining priors
+prior_f_7h1 <- c(prior(normal(0, 100), class = Intercept),
+                prior(normal(0, 100), class = b),
+                prior(uniform(0, 100), class = sigma)) 
+
+#model
+m_7h1 <- 
+  brm(data = d, family = gaussian,
+     f_7h1,
+      prior = prior_f_7h1,
+      iter = 2000, 
+     warmup = 1000, 
+     cores = 2, 
+     chains = 2,
+      seed = 7,
+     sample_prior = T)
+
+#posterior check
+pp_check(m_7h1, nsamples = 100)
+
+#summary
+m_7h1
+
+# add criterion
+m_7h1 <- add_criterion(m_7h1, "loo")
+
+```
+
+7H2. Use WAIC to compare the model from 7H1 to a model that omits bed. What do you infer
+from this comparison? Can you reconcile the WAIC results with the posterior distribution of the bed
+coefficients?
+```{r}
+# with interaction with bed
+#formula
+f_7h2 <- bf(blooms ~ 1 + water_c * shade_c)
+
+#getting prior
+get_prior(f_7h2, data=d, family=gaussian)
+
+#defining priors
+prior_f_7h2 <- c(prior(normal(0, 100), class = Intercept),
+                prior(normal(0, 100), class = b),
+                prior(uniform(0, 100), class = sigma)) 
+
+#model
+m_7h2 <- 
+  brm(data = d, family = gaussian,
+     f_7h2,
+      prior = prior_f_7h2,
+      iter = 2000, 
+     warmup = 1000, 
+     cores = 2, 
+     chains = 2,
+      seed = 7,
+     sample_prior = T)
+
+#posterior check?
+pp_check(m_7h2, nsamples = 100)
+
+# add criterion
+m_7h2 <- add_criterion(m_7h2, "loo", reloo = TRUE)
+
+#comparing the two with LOOIC weights
+
+loo_compare(m_7h2, m_7h1)
+loo_model_weights(m_7h2, m_7h1)
+
+
+
+
+
+# cbind() trick to convert from elpd metric to more traditional WAIC metric
+cbind(waic_diff = w[, 1] * -2,
+      se        = w[, 2] *  2)
+
+# and weight 
+model_weights(b7.6, b7.7, weights = "waic") # almost all weight goes to interaction model.
+
+
+```
+
+7H3. Consider again the data(rugged) data on economic development and terrain ruggedness,
+examined in this chapter. One of the African countries in that example, Seychelles, is far outside
+the cloud of other nations, being a rare country with both relatively high GDP and high ruggedness.
+Seychelles is also unusual, in that it is a group of islands far from the coast of mainland Africa, and
+its main economic activity is tourism.
+One might suspect that this one nation is exerting a strong influence on the conclusions. In
+this problem, I want you to drop Seychelles from the data and re-evaluate the hypothesis that the
+relationship of African economies with ruggedness is different from that on other continents.
+
+(a) Begin by using map to fit just the interaction model:
+$$y_i ~ Normal(\mu_i, \sigma)$$
+$$\mu_i = \alpha + \beta A_i + \beta_R R_i + \beta_AR  A_i R_i$$
+where y is log GDP per capita in the year 2000 (log of rgdppc_2000); A is cont_africa, the dummy
+variable for being an African nation; and R is the variable rugged. Choose your own priors. Compare 
+the inference from this model fit to the data without Seychelles to the same model fit to the full data.
+Does it still seem like the effect of ruggedness depends upon continent? How much has the expected
+relationship changed?
+
+```{r}
+
+```
+
+(b) Now plot the predictions of the interaction model, with and without Seychelles. Does it still
+seem like the effect of ruggedness depends upon continent? How much has the expected relationship
+changed?
+
+```{r}
+
+```
+
+(c) Finally, conduct a model comparison analysis, using WAIC. Fit three models to the data without
+Seychelles:
+
+$$Model 1 : y_i ~ Normal(\mu_i, \sigma) 
+\mu_i = \alpha + \beta_RR_i $$
+
+$$Model 2 : y_i ~ Normal(\mu_i, \sigma)      
+
+\mu_i = \beta_A A_i + \beta_R R_i$$
+
+$$Model 3 : y_i ~ Normal(\mu_i, \sigma)
+\mu_i = \beta_A A_i + \beta_R R_i + \beta_AR  A_i R_i$$
+
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
